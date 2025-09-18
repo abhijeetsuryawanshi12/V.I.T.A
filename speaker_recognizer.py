@@ -24,19 +24,23 @@ class SpeakerRecognizer:
             raise ValueError(f"No speaker profiles (.pv files) found in '{profiles_dir}'. Please run enroll_speaker.py first.")
 
         try:
-            # --- FIX IS HERE ---
-            # 1. Load each speaker profile from its file path into an EagleProfile object.
             print("Loading speaker profiles from files...")
-            speaker_profiles = [EagleProfile.from_file(path) for path in profile_paths]
-
-            # 2. Initialize the recognizer with the list of profile OBJECTS.
-            #    The correct keyword argument is 'speaker_profiles'.
+            
+            # --- THE CORRECT FIX IS HERE ---
+            # We must manually open each profile file, read its binary content,
+            # and then create the EagleProfile object from those bytes.
+            speaker_profiles = []
+            for path in profile_paths:
+                with open(path, 'rb') as f:
+                    profile_bytes = f.read()
+                speaker_profiles.append(EagleProfile.from_bytes(profile_bytes))
+            
+            # This part remains correct
             self.eagle = pveagle.create_recognizer(
                 access_key=access_key,
                 speaker_profiles=speaker_profiles
             )
 
-            # This part is still correct as the order of profiles and labels is maintained.
             self.speaker_labels = [os.path.basename(p).replace('.pv', '') for p in profile_paths]
             print("Speaker Recognizer initialized with profiles:", self.speaker_labels)
 
