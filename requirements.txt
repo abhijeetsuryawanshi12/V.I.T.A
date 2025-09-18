@@ -1,0 +1,9 @@
+faster-whisper
+pyannote.audio>=3.1
+torch
+torchaudio
+sounddevice
+scipy
+numpy
+huggingface_hub
+python-dotenv
