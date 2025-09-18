@@ -20,7 +20,7 @@ class AudioProcessor:
     def __init__(self, 
                  whisper_model_size: str = "small",
                  auth_token: Optional[str] = None,
-                 compute_type: str = "float16"):
+                 compute_type: str = "float32"):
         
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Initializing AudioProcessor with device: {self.device}")
@@ -60,4 +60,4 @@ class AudioProcessor:
             
         except Exception as e:
             logger.error(f"Processing failed for {audio_file}: {e}")
-            raise
+            raise

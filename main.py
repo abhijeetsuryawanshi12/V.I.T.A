@@ -1,144 +1,125 @@
 # main.py
 #!/usr/bin/env python3
 """
-Main script to record audio and perform transcription + speaker recognition.
-Can also process an existing audio file if provided via command-line argument.
+Main script to perform transcription with a choice of speaker analysis:
+- Diarization (pyannote): Who spoke when? (unsupervised)
+- Recognition (pveagle): Is this a known speaker? (supervised)
 """
 
 import logging
 import os
-import argparse  # Import the argparse library
+import argparse
 from dotenv import load_dotenv
 
 from audio_recorder import AudioRecorder
-from transcriber import Transcriber
-from speaker_recognizer import SpeakerRecognizer
 from utils import print_results, save_results
 
-# Configure logging
+# Import processors for both modes
+from audio_processor import AudioProcessor
+from speaker_recognizer import SpeakerRecognizer
+from transcriber import Transcriber
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
 logger = logging.getLogger(__name__)
-
-def show_setup_instructions():
-    """Prints instructions for setting up the environment."""
-    print("="*80)
-    print("SPEAKER RECOGNITION WORKFLOW")
-    print("="*80)
-    print("This script uses Picovoice Eagle to identify enrolled speakers.")
-    print("\nSTEP 1: ENROLL SPEAKERS (One-time setup)")
-    print("  1. Create a folder named 'enrollment_audio'.")
-    print("  2. Place WAV files of a speaker inside (e.g., 'Alice_1.wav', 'Alice_2.wav').")
-    print("  3. Run the enrollment script: python enroll_speaker.py --name Alice")
-    print("  4. Repeat for each person you want to recognize.")
-    print("     This will create '.pv' profile files in the 'speaker_profiles' folder.")
-    print("\nSTEP 2: RUN RECOGNITION (This script)")
-    print("  - To record live audio: python main.py")
-    print("  - To process an existing file: python main.py --file path/to/your/audio.wav")
-    print("="*80)
 
 def main():
     """Main execution function."""
     load_dotenv()
 
-    # --- NEW: Add command-line argument parsing ---
-    parser = argparse.ArgumentParser(
-        description="Records audio or processes an existing file for speaker recognition."
+    parser = argparse.ArgumentParser(description="A tool for speaker analysis and transcription.")
+    parser.add_argument(
+        '--mode',
+        help="The mode of operation: 'diarize' or 'recognize'.",
+        type=str,
+        choices=['diarize', 'recognize'],
+        default='diarize'
     )
     parser.add_argument(
         '--file',
-        help="Path to an existing audio file to process. If not provided, will start live recording.",
-        type=str,
-        default=None  # Default to None if no file is given
+        help="Path to an existing audio file. If not provided, will start live recording.",
+        type=str
     )
     args = parser.parse_args()
-    
-    show_setup_instructions()
 
     # --- Configuration ---
     RECORDED_AUDIO_FILE = "my_voice_recording.wav"
-    OUTPUT_FILE = "recognition_results.json"
     WHISPER_MODEL = "small"
     COMPUTE_TYPE = "float16"
-    RECOGNITION_THRESHOLD = 0.5
-
-    picovoice_access_key = os.getenv("PICOVOICE_ACCESS_KEY")
-    if not picovoice_access_key:
-        logger.error("PICOVOICE_ACCESS_KEY not found in .env file. Cannot start recognizer.")
-        return
-
+    
     try:
-        audio_file = None
-        # --- MODIFIED LOGIC: Choose between recording and using an existing file ---
+        # --- Step 1: Get Audio File ---
         if args.file:
-            # User provided a file, so we'll use that.
-            if os.path.exists(args.file):
-                audio_file = args.file
-                logger.info(f"Processing existing audio file: {audio_file}")
-            else:
-                logger.error(f"File not found: {args.file}")
-                return
+            if not os.path.exists(args.file):
+                logger.error(f"File not found: {args.file}"); return
+            audio_file = args.file
+            logger.info(f"Processing existing audio file: {audio_file}")
         else:
-            # No file was provided, so start the live recording process.
             logger.info("No file provided. Starting live recording session...")
             recorder = AudioRecorder(filename=RECORDED_AUDIO_FILE)
             audio_file = recorder.record()
 
-        # The rest of the script continues as before, using the `audio_file` variable.
-        # 2. Initialize Models
-        transcriber = Transcriber(model_size=WHISPER_MODEL, compute_type=COMPUTE_TYPE)
-        recognizer = SpeakerRecognizer(access_key=picovoice_access_key)
-        
-        # 3. Transcribe Audio
-        logger.info(f"Starting transcription for {audio_file}...")
-        transcription_segments = transcriber.transcribe(audio_file)
-        if not transcription_segments:
-            logger.warning("Transcription returned no segments. Exiting.")
-            return
-
-        # 4. Recognize Speaker
-        logger.info(f"Starting speaker recognition for {audio_file}...")
-        speaker_scores = recognizer.recognize(audio_file)
-        logger.info(f"Speaker scores: {speaker_scores}")
-        
-        # 5. Combine Results
-        if speaker_scores:
-            top_speaker = max(speaker_scores, key=speaker_scores.get)
-            top_score = speaker_scores[top_speaker]
-            
-            if top_score >= RECOGNITION_THRESHOLD:
-                identified_speaker = top_speaker
-                logger.info(f"Identified speaker as '{identified_speaker}' with score {top_score:.2f}")
-            else:
-                identified_speaker = "Unknown Speaker"
-                logger.warning(f"Top speaker '{top_speaker}' score ({top_score:.2f}) is below threshold.")
-        else:
-            identified_speaker = "Unknown Speaker"
-        
         final_results = []
-        for segment in transcription_segments:
-            final_results.append({
-                "speaker": identified_speaker,
-                "start": segment["start"],
-                "end": segment["end"],
-                "duration": segment["end"] - segment["start"],
-                "text": segment["text"],
-                "confidence": segment["avg_logprob"]
-            })
-            
-        # 6. Display and Save Results
-        print_results(final_results, show_confidence=True)
-        save_results(final_results, OUTPUT_FILE)
         
-        print("\nSUMMARY:")
-        total_duration = transcription_segments[-1]['end'] if transcription_segments else 0
-        print(f"Total duration processed: {total_duration:.2f} seconds")
-        print(f"Identified Speaker: {identified_speaker}")
-        print(f"Total segments: {len(final_results)}")
+        # --- Step 2: Run Selected Mode ---
+        if args.mode == 'diarize':
+            print("\n--- Running in Speaker Diarization Mode (pyannote) ---")
+            OUTPUT_FILE = "diarization_results.json"
+            processor = AudioProcessor(whisper_model_size=WHISPER_MODEL, compute_type=COMPUTE_TYPE)
+            final_results = processor.process_audio(audio_file)
+            
+            # Print diarization-specific summary
+            print_results(final_results, show_confidence=True)
+            save_results(final_results, OUTPUT_FILE)
+            if final_results:
+                total_duration = max(seg['end'] for seg in final_results)
+                unique_speakers = set(seg['speaker'] for seg in final_results)
+                print("\nSUMMARY (Diarization):")
+                print(f"Total duration processed: {total_duration:.2f} seconds")
+                print(f"Speakers identified: {len(unique_speakers)}")
+                print(f"Diarization available (pyannote): {processor.diarization_available}")
+            
+        elif args.mode == 'recognize':
+            print("\n--- Running in Speaker Recognition Mode (pveagle) ---")
+            OUTPUT_FILE = "recognition_results.json"
+            RECOGNITION_THRESHOLD = 0.5
+            
+            picovoice_access_key = os.getenv("PICOVOICE_ACCESS_KEY")
+            if not picovoice_access_key:
+                logger.error("PICOVOICE_ACCESS_KEY not found in .env file."); return
+
+            transcriber = Transcriber(model_size=WHISPER_MODEL, compute_type=COMPUTE_TYPE)
+            recognizer = SpeakerRecognizer(access_key=picovoice_access_key)
+            
+            transcription_segments = transcriber.transcribe(audio_file)
+            if not transcription_segments:
+                logger.warning("Transcription returned no segments."); return
+            
+            speaker_scores = recognizer.recognize(audio_file)
+            logger.info(f"Speaker scores: {speaker_scores}")
+            
+            identified_speaker = "Unknown Speaker"
+            if speaker_scores:
+                top_speaker = max(speaker_scores, key=speaker_scores.get)
+                if speaker_scores[top_speaker] >= RECOGNITION_THRESHOLD:
+                    identified_speaker = top_speaker
+            
+            for segment in transcription_segments:
+                segment['speaker'] = identified_speaker
+            final_results = transcription_segments
+
+            # Print recognition-specific summary
+            print_results(final_results, show_confidence=True)
+            save_results(final_results, OUTPUT_FILE)
+            if final_results:
+                total_duration = final_results[-1]['end']
+                print("\nSUMMARY (Recognition):")
+                print(f"Total duration processed: {total_duration:.2f} seconds")
+                print(f"Identified Speaker: {identified_speaker}")
+
         print(f"Full results saved to: {OUTPUT_FILE}")
 
     except Exception as e:
         logger.error(f"An error occurred in the main process: {e}", exc_info=True)
-        print(f"\nAn unexpected error occurred. Please check the logs for details.")
 
 if __name__ == "__main__":
     main()

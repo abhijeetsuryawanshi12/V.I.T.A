@@ -7,3 +7,5 @@ scipy
 numpy
 huggingface_hub
 python-dotenv
+streamlit
+streamlit-mic-recorder

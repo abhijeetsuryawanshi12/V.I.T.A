@@ -1,3 +1,4 @@
+# utils.py
 #!/usr/bin/env python3
 """
 Utility functions for audio processing, file handling, and result formatting.
@@ -33,12 +34,23 @@ def merge_results(diarization: List[Dict], transcription: List[Dict],
                  overlap_threshold: float = 0.3) -> List[Dict]:
     """
     Merge diarization and transcription results with improved alignment.
+    Handles cases where diarization might be empty.
     """
     logger.info("Merging diarization and transcription results...")
     
-    if not diarization or not transcription:
-        logger.warning("Either diarization or transcription is empty. Cannot merge.")
+    if not transcription:
+        logger.warning("Transcription is empty. Cannot merge.")
         return []
+
+    if not diarization:
+        logger.warning("Diarization is empty. Falling back to using transcription segments with a default speaker.")
+        # Assign a default speaker to each transcription segment
+        for segment in transcription:
+            segment['speaker'] = "SPEAKER_00"
+            segment['duration'] = segment['end'] - segment['start']
+            # Use avg_logprob as confidence if it exists, otherwise 0
+            segment['confidence'] = segment.get('avg_logprob', 0)
+        return transcription
 
     def calculate_overlap(seg1: Dict, seg2: Dict) -> float:
         """Calculate overlap ratio between two segments."""
@@ -112,4 +124,4 @@ def print_results(results: List[Dict], show_confidence: bool = False):
             print(f"{timestamp} {speaker_text}{confidence}")
         else:
             print(f"{timestamp} {speaker_text}")
-    print("="*80)
+    print("="*80)

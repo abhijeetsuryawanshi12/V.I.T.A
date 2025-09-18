@@ -1,3 +1,4 @@
+# transcriber.py
 #!/usr/bin/env python3
 """
 Module for handling speech transcription using faster-whisper.
@@ -46,7 +47,7 @@ class Transcriber:
                 beam_size=5,
                 language=None,  # Auto-detect
                 vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500)
+                vad_parameters=dict(min_silence_duration_ms=300) # Made VAD slightly more sensitive
             )
 
             results = [
@@ -59,9 +60,12 @@ class Transcriber:
                 }
                 for seg in segments_gen if seg.text.strip()
             ]
+            
+            if not results:
+                logger.warning("Transcription resulted in zero segments. The audio might be silent or too short.")
 
-            logger.info(f"Transcription completed. Language: {info.language}, Segments: {len(results)}")
+            logger.info(f"Transcription completed. Language: {info.language}, Segments found: {len(results)}")
             return results
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
-            raise
+            raise
