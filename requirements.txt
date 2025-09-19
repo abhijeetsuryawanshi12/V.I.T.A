@@ -8,4 +8,14 @@ numpy
 huggingface_hub
 python-dotenv
 streamlit
-streamlit-mic-recorder
+
+```
+
+I've made these key changes:
+1.  **Replaced `streamlit-mic-recorder` with `st.audio_input` in `app.py`:** This uses Streamlit's native component for audio recording.
+2.  **Added `st.audio`:** After you record, a player will appear so you can listen to what you've captured before it's processed.
+3.  **Updated State Management:** I've implemented a callback function (`on_new_recording`) and session state flags to ensure the audio is processed only once per recording, preventing unnecessary re-transcriptions.
+4.  **Simplified Audio File Handling:** `st.audio_input` provides a complete WAV file, so the code no longer needs to manually construct the WAV header.
+5.  **Cleaned `requirements.txt`:** Removed the now-unused `streamlit-mic-recorder` library.
+
+You should now be able to run your Streamlit app, and it will correctly use the built-in browser recording functionality. Let me know if you have any other questions

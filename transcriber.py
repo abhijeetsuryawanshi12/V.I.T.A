@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class Transcriber:
     """Handles audio transcription using the Whisper model."""
 
-    def __init__(self, model_size: str = "small", device: str = "cpu", compute_type: str = "float16"):
+    def __init__(self, model_size: str = "large", device: str = "cpu", compute_type: str = "float16"):
         self.device = device
         self.model = self._load_model(model_size, compute_type)
 

@@ -1,12 +1,11 @@
+
 import streamlit as st
 import os
-import wave
 import tempfile
 import logging
 import json
 from dotenv import load_dotenv
 from audio_processor import AudioProcessor
-from streamlit_mic_recorder import mic_recorder
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -105,10 +104,18 @@ def get_audio_processor():
         st.error(f"Error initializing audio processor: {e}")
         st.stop()
 
+# --- Callback for audio recorder ---
+def on_new_recording():
+    """Callback function to handle new audio recordings."""
+    # When new audio is recorded, reset the transcript and set a flag to process.
+    if st.session_state.recorder is not None:
+        st.session_state.audio_processed = False
+        st.session_state.transcript_data = []
+
 # --- Main App Logic ---
 def main():
     st.title("🎙️ Live Audio Transcription & Diarization")
-    st.markdown("<p style='text-align: center; color: #555;'>Click the button, speak, and see your editable transcript appear below.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #555;'>Record your voice using the recorder below and the transcript will appear.</p>", unsafe_allow_html=True)
     st.write("") # Spacer
 
     audio_processor = get_audio_processor()
@@ -116,44 +123,53 @@ def main():
     # Session state initialization
     if 'transcript_data' not in st.session_state:
         st.session_state.transcript_data = []
+    if 'audio_processed' not in st.session_state:
+        st.session_state.audio_processed = True
 
     # --- Recorder UI in a styled card ---
     st.markdown('<div class="recorder-card">', unsafe_allow_html=True)
     st.subheader("Recorder")
-    audio = mic_recorder(
-        start_prompt="🎤 Start Recording",
-        stop_prompt="⏹️ Stop Recording",
+    
+    # Use st.audio_input to record audio from the user's microphone
+    audio_bytes = st.audio_input(
+        "Record your voice here. Click the microphone to start and stop.",
         key='recorder',
-        use_container_width= True
+        on_change=on_new_recording
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-    if audio and audio['bytes']:
+    # Process audio if a new recording is available and not yet processed
+    if audio_bytes and not st.session_state.audio_processed:
+        # Let the user listen to their recording
+        st.audio(audio_bytes, format='audio/wav')
+        
         with st.spinner("Transcribing and analyzing audio... This might take a moment."):
             try:
-                # Save audio bytes to a temporary WAV file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
-                    with wave.open(tmp_wav.name, 'wb') as wf:
-                        wf.setnchannels(1); wf.setsampwidth(2)
-                        wf.setframerate(audio['sample_rate'])
-                        wf.writeframes(audio['bytes'])
-                    
-                    transcript = audio_processor.process_audio(tmp_wav.name)
+                # Get the bytes from the UploadedFile object
+                audio_data = audio_bytes.getvalue()
                 
-                # --- NEW: Check for empty transcript and provide feedback ---
+                # Write bytes to a temporary WAV file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+                    tmp_wav.write(audio_data)
+                    tmp_wav_path = tmp_wav.name
+                
+                transcript = audio_processor.process_audio(tmp_wav_path)
+                
                 if transcript:
                     st.session_state.transcript_data = transcript
                 else:
                     st.warning("⚠️ No speech was detected in the audio. Please try recording again, speaking clearly into your microphone.")
-                    st.session_state.transcript_data = [] # Clear any previous transcript
+                    st.session_state.transcript_data = []
 
-                os.unlink(tmp_wav.name)
-                st.rerun()
+                os.unlink(tmp_wav_path)
+                st.session_state.audio_processed = True # Mark as processed
+                st.rerun() # Rerun to update the view with the new transcript
 
             except Exception as e:
                 logger.error(f"Error processing audio: {e}", exc_info=True)
                 st.error(f"An error occurred during processing: {e}")
+                st.session_state.audio_processed = True # Also mark as processed on error to avoid loops
     
     # Display the editable transcript if it exists
     if st.session_state.transcript_data:
