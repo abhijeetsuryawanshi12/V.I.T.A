@@ -94,7 +94,7 @@ def get_audio_processor():
         
         with st.spinner("Loading audio processing models... This may take a minute on first run."):
             processor = AudioProcessor(
-                whisper_model_size="small",
+                whisper_model_size="large",
                 auth_token=hf_token,
                 compute_type="float32" # Use "int8" for faster CPU performance
             )
