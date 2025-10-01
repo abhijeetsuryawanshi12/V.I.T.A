@@ -9,3 +9,10 @@ huggingface_hub
 python-dotenv
 streamlit
 SpeechRecognition
+
+
+#
+# NeMo
+# huggingface_hub==0.23.2
+# install
+# reinstall.sh

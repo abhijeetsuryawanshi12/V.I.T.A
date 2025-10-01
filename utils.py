@@ -1,4 +1,3 @@
-# utils.py
 #!/usr/bin/env python3
 """
 Utility functions for audio processing, file handling, and result formatting.
@@ -30,70 +29,54 @@ def validate_audio_file(audio_file: str) -> Path:
         
     return audio_path
 
-def merge_results(diarization: List[Dict], transcription: List[Dict], 
-                 overlap_threshold: float = 0.3) -> List[Dict]:
+def merge_results(diarization: List[Dict], transcription: List[Dict]) -> List[Dict]:
     """
-    Merge diarization and transcription results with improved alignment.
-    Handles cases where diarization might be empty.
+    Aligns transcription segments with diarization segments to assign a speaker to each text segment.
+
+    This function iterates through each transcription segment and assigns it a speaker
+    based on the diarization timeline. This ensures that each transcribed phrase
+    appears as a separate entry, preventing them from being merged into a single cell.
     """
-    logger.info("Merging diarization and transcription results...")
-    
+    logger.info("Aligning transcription to diarization results...")
+
     if not transcription:
         logger.warning("Transcription is empty. Cannot merge.")
         return []
 
     if not diarization:
-        logger.warning("Diarization is empty. Falling back to using transcription segments with a default speaker.")
-        # Assign a default speaker to each transcription segment
+        logger.warning("Diarization is empty. Assigning a default speaker to all transcription segments.")
+        # Assign a default speaker and other necessary fields if diarization fails
         for segment in transcription:
             segment['speaker'] = "SPEAKER_00"
-            segment['duration'] = segment['end'] - segment['start']
-            # Use avg_logprob as confidence if it exists, otherwise 0
+            segment['duration'] = segment.get('end', 0) - segment.get('start', 0)
             segment['confidence'] = segment.get('avg_logprob', 0)
         return transcription
 
-    def calculate_overlap(seg1: Dict, seg2: Dict) -> float:
-        """Calculate overlap ratio between two segments."""
-        overlap_start = max(seg1["start"], seg2["start"])
-        overlap_end = min(seg1["end"], seg2["end"])
-        overlap_duration = max(0, overlap_end - overlap_start)
-        
-        min_duration = min(seg1["end"] - seg1["start"], seg2["end"] - seg2["start"])
-        return overlap_duration / min_duration if min_duration > 0 else 0
-    
-    output = []
-    used_transcriptions = set()
-    
-    for d_seg in diarization:
-        matching_transcriptions = []
-        for i, t_seg in enumerate(transcription):
-            if i in used_transcriptions:
-                continue
-            if calculate_overlap(d_seg, t_seg) >= overlap_threshold:
-                matching_transcriptions.append((i, t_seg))
-        
-        if not matching_transcriptions:
-            continue
+    def get_speaker_for_time(time_point: float) -> str:
+        """Find the speaker for a given time point."""
+        for d_seg in diarization:
+            if d_seg['start'] <= time_point < d_seg['end']:
+                return d_seg['speaker']
+        return "Unknown"  # Fallback for timepoints outside any diarization segment
 
-        combined_text = " ".join([t["text"] for _, t in matching_transcriptions])
-        used_indices = [i for i, _ in matching_transcriptions]
-        used_transcriptions.update(used_indices)
-        
-        # Calculate an average confidence if available
-        confidences = [t.get("avg_logprob", 0) for _, t in matching_transcriptions]
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+    aligned_results = []
+    for t_seg in transcription:
+        # Determine the speaker at the midpoint of the transcription segment
+        mid_point = t_seg['start'] + (t_seg['end'] - t_seg['start']) / 2
+        speaker = get_speaker_for_time(mid_point)
 
-        output.append({
-            "speaker": d_seg["speaker"],
-            "start": d_seg["start"],
-            "end": d_seg["end"],
-            "duration": d_seg["duration"],
-            "text": combined_text.strip(),
-            "confidence": avg_confidence,
+        aligned_results.append({
+            "speaker": speaker,
+            "start": t_seg['start'],
+            "end": t_seg['end'],
+            "duration": t_seg['end'] - t_seg['start'],
+            "text": t_seg['text'],
+            # Preserve confidence if it exists in the original transcription
+            "confidence": t_seg.get('avg_logprob', t_seg.get('confidence', 0)),
         })
-    
-    logger.info(f"Merge completed: {len(output)} final segments")
-    return output
+
+    logger.info(f"Alignment completed: {len(aligned_results)} final segments created from {len(transcription)} transcription segments.")
+    return aligned_results
 
 def save_results(results: List[Dict], output_file: str):
     """Save results to JSON file."""
