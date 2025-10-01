@@ -10,6 +10,7 @@ from typing import List, Dict, Optional
 import torch
 import torchaudio
 from pyannote.audio import Pipeline
+from huggingface_hub import login
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,20 @@ class Diarizer:
         try:
             warnings.filterwarnings("ignore", message=".*torchaudio._extension.*")
             token = auth_token or os.getenv("HF_TOKEN")
-            
+
+            if not token:
+                logger.error("Hugging Face token not found. Please set HF_TOKEN in your .env file.")
+                logger.warning("Diarization will be disabled.")
+                return None
+
+            # --- FIX IS HERE ---
+            # Login to Hugging Face Hub using the new method
+            # This must be done before loading the pipeline
+            login(token=token)
+
+            # Load the pipeline WITHOUT the 'use_auth_token' argument
             pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1",
-                use_auth_token=token
+                "pyannote/speaker-diarization-3.1"
             )
             
             if self.device == "cuda" and torch.cuda.is_available():
@@ -41,7 +52,7 @@ class Diarizer:
             error_msg = str(e).lower()
             if "authentication" in error_msg or "gated" in error_msg:
                 logger.error("AUTHENTICATION ERROR for pyannote/speaker-diarization-3.1")
-                logger.error("Please visit https://hf.co/pyannote/speaker-diarization-3.1, accept user conditions, and get a token.")
+                logger.error("Please visit https://hf.co/pyannote/speaker-diarization-3.1, accept user conditions, and ensure your HF_TOKEN is correct.")
             else:
                 logger.error(f"Failed to load diarization pipeline: {e}")
             logger.warning("Diarization will be disabled.")
@@ -113,4 +124,4 @@ class Diarizer:
         })
 
         logger.info(f"Simple diarization completed: {len(diarization_segments)} segments")
-        return diarization_segments
+        return diarization_segments
