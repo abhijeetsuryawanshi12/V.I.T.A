@@ -1,8 +1,8 @@
 # requirements.txt
 # Core ML and Audio Libraries
 # We need torch/torchaudio >= 2.1 for pyannote.audio 3.1+ to work correctly
-torch>=2.1.0
-torchaudio>=2.1.0
+# torch>=2.1.0
+# torchaudio>=2.1.0
 pyannote.audio>=3.1
 faster-whisper
 

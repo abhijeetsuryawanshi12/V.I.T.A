@@ -18,7 +18,7 @@ class AudioProcessor:
     """Orchestrates the audio processing pipeline."""
     
     def __init__(self, 
-                 whisper_model_size: str = "large",
+                 whisper_model_size: str = "small",
                  auth_token: Optional[str] = None,
                  compute_type: str = "float32"):
         

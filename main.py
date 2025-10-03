@@ -43,7 +43,7 @@ def main():
 
     # --- Configuration ---
     RECORDED_AUDIO_FILE = "my_voice_recording.wav"
-    WHISPER_MODEL = "large"
+    WHISPER_MODEL = "small"
     COMPUTE_TYPE = "float16"
     
     try:

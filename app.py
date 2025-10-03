@@ -4,8 +4,32 @@ import os
 import tempfile
 import logging
 import json
+import warnings
 from dotenv import load_dotenv
+
+# --- NEW FIX: Force-load the missing component ---
+# The 'AudioDecoder' NameError from pyannote.audio suggests a lazy-loading issue
+# with its torchaudio dependency. By importing it here at the very start of the app,
+# we ensure it's available in the environment before pyannote needs it.
+# try:
+#     from torchaudio.io import AudioDecoder
+# except ImportError:
+#     # This is a fallback for debugging. If this prints, it means torchaudio is
+#     # installed incorrectly or is a version that doesn't have AudioDecoder.
+#     # We let the app continue so the user can see the error in the UI.
+#     st.error("CRITICAL: Failed to import AudioDecoder from torchaudio.io. Please check your torch/torchaudio installation.")
+#     pass
+
 from audio_processor import AudioProcessor
+
+# --- Filter the specific Torchaudio UserWarning ---
+# This warning is harmless and is triggered by our fix for the pyannote.audio NameError.
+# We can safely ignore it to keep the console output clean.
+warnings.filterwarnings(
+    "ignore",
+    message="Torchaudio's I/O functions now support per-call backend dispatch*",
+    category=UserWarning
+)
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -94,7 +118,7 @@ def get_audio_processor():
         
         with st.spinner("Loading audio processing models... This may take a minute on first run."):
             processor = AudioProcessor(
-                whisper_model_size="large",
+                whisper_model_size="small",
                 auth_token=hf_token,
                 compute_type="float32" # Use "int8" for faster CPU performance
             )

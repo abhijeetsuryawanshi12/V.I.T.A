@@ -2,6 +2,8 @@
 """
 Module for handling speaker diarization using pyannote.audio.
 """
+import os
+os.environ["PYANNOTE_AUDIO_BACKEND"] = "soundfile"
 import logging
 import os
 import warnings
@@ -11,6 +13,17 @@ import torch
 import torchaudio
 from pyannote.audio import Pipeline
 from huggingface_hub import login
+import librosa
+
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+# --- MODIFIED FIX ---
+# This explicit import helps resolve a NameError within the pyannote library.
+# We have removed the try...except block. If this line fails with an ImportError,
+# it indicates a critical problem with the torchaudio installation itself,
+# and we want the program to stop with a clear error rather than failing later.
+# from torchcodec.decoders import AudioDecoder
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +46,12 @@ class Diarizer:
                 logger.warning("Diarization will be disabled.")
                 return None
 
-            # --- FIX IS HERE ---
             # Login to Hugging Face Hub using the new method
-            # This must be done before loading the pipeline
             login(token=token)
 
             # Load the pipeline WITHOUT the 'use_auth_token' argument
             pipeline = Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1"
+                "pyannote/speaker-diarization-community-1"
             )
             
             if self.device == "cuda" and torch.cuda.is_available():
@@ -68,25 +79,36 @@ class Diarizer:
             logger.info("Using simple voice activity based diarization fallback...")
             return self._simple_diarization(transcription_segments)
 
+    
+
+# Inside your Diarizer class, modify the method _run_pipeline_diarization:
     def _run_pipeline_diarization(self, audio_file: str) -> List[Dict]:
-        """Run the main pyannote diarization pipeline."""
-        logger.info("Starting speaker diarization with pyannote pipeline...")
+        """Run the main pyannote diarization pipeline using pre-loaded audio tensor."""
+        logger.info("Starting speaker diarization with preloaded audio using librosa...")
         try:
-            diarization = self.pipeline(audio_file)
+            audio, sr = librosa.load(audio_file, sr=16000)
+            waveform = torch.tensor(audio).unsqueeze(0)
+            audio_dict = {
+                'waveform': waveform,
+                'sample_rate': sr
+            }
+            diarization = self.pipeline(audio_dict)
             segments = [
                 {
-                    "start": float(turn.start),
-                    "end": float(turn.end),
+                    "start": float(segment.start),
+                    "end": float(segment.end),
                     "speaker": speaker,
-                    "duration": float(turn.end - turn.start)
+                    "duration": float(segment.end - segment.start)
                 }
-                for turn, _, speaker in diarization.itertracks(yield_label=True)
+                for segment, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True)
             ]
             logger.info(f"Diarization completed: {len(segments)} segments found")
             return segments
         except Exception as e:
             logger.error(f"Diarization with pipeline failed: {e}")
             raise
+
+
     
     def _simple_diarization(self, transcription_segments: List[Dict]) -> List[Dict]:
         """

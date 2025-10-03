@@ -35,7 +35,7 @@ class Transcriber:
     """Handles audio transcription using the Whisper model for language detection
     and Google Speech Recognition for transcription of non-English languages."""
 
-    def __init__(self, model_size: str = "large", device: str = "cpu", compute_type: str = "float32"):
+    def __init__(self, model_size: str = "small", device: str = "cpu", compute_type: str = "float32"):
         self.device = device
         self.model = self._load_model(model_size, compute_type)
         self.recognizer = sr.Recognizer()
