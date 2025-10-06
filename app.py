@@ -1,4 +1,3 @@
-
 import streamlit as st
 import os
 import tempfile
@@ -7,24 +6,9 @@ import json
 import warnings
 from dotenv import load_dotenv
 
-# --- NEW FIX: Force-load the missing component ---
-# The 'AudioDecoder' NameError from pyannote.audio suggests a lazy-loading issue
-# with its torchaudio dependency. By importing it here at the very start of the app,
-# we ensure it's available in the environment before pyannote needs it.
-# try:
-#     from torchaudio.io import AudioDecoder
-# except ImportError:
-#     # This is a fallback for debugging. If this prints, it means torchaudio is
-#     # installed incorrectly or is a version that doesn't have AudioDecoder.
-#     # We let the app continue so the user can see the error in the UI.
-#     st.error("CRITICAL: Failed to import AudioDecoder from torchaudio.io. Please check your torch/torchaudio installation.")
-#     pass
-
 from audio_processor import AudioProcessor
 
 # --- Filter the specific Torchaudio UserWarning ---
-# This warning is harmless and is triggered by our fix for the pyannote.audio NameError.
-# We can safely ignore it to keep the console output clean.
 warnings.filterwarnings(
     "ignore",
     message="Torchaudio's I/O functions now support per-call backend dispatch*",
@@ -33,7 +17,7 @@ warnings.filterwarnings(
 
 # --- Page Configuration ---
 st.set_page_config(
-    page_title="🎙️ Live Transcription App",
+    page_title="🎙️ Multilingual Transcription App",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -101,6 +85,19 @@ st.markdown("""
     .timestamp {
         font-size: 0.9em;
         color: #555;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .language-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        font-size: 0.8em;
+        font-weight: bold;
+        color: white;
+        background-color: #3498db; /* A nice blue color */
+        border-radius: 12px;
+        line-height: 1;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -138,8 +135,8 @@ def on_new_recording():
 
 # --- Main App Logic ---
 def main():
-    st.title("🎙️ Live Audio Transcription & Diarization")
-    st.markdown("<p style='text-align: center; color: #555;'>Record your voice using the recorder below and the transcript will appear.</p>", unsafe_allow_html=True)
+    st.title("🎙️ Live Multilingual Transcription")
+    st.markdown("<p style='text-align: center; color: #555;'>Record your voice in any language. The app will detect the language for each segment and transcribe it.</p>", unsafe_allow_html=True)
     st.write("") # Spacer
 
     audio_processor = get_audio_processor()
@@ -154,8 +151,9 @@ def main():
     st.markdown('<div class="recorder-card">', unsafe_allow_html=True)
     st.subheader("Recorder")
     
-    # Use st.audio_input to record audio from the user's microphone
-    audio_bytes = st.audio_input(
+    # --- CORRECTED: Use st.audio_input as requested ---
+    # This component returns an in-memory file-like object.
+    audio_bytes_io = st.audio_input(
         "Record your voice here. Click the microphone to start and stop.",
         key='recorder',
         on_change=on_new_recording
@@ -164,14 +162,14 @@ def main():
 
 
     # Process audio if a new recording is available and not yet processed
-    if audio_bytes and not st.session_state.audio_processed:
+    if audio_bytes_io and not st.session_state.audio_processed:
         # Let the user listen to their recording
-        st.audio(audio_bytes, format='audio/wav')
+        st.audio(audio_bytes_io, format='audio/wav')
         
         with st.spinner("Transcribing and analyzing audio... This might take a moment."):
             try:
                 # Get the bytes from the UploadedFile object
-                audio_data = audio_bytes.getvalue()
+                audio_data = audio_bytes_io.getvalue()
                 
                 # Write bytes to a temporary WAV file
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
@@ -211,11 +209,19 @@ def main():
             timestamp_str = f"{ts_start} → {ts_end}"
             color = speaker_colors.get(speaker, "#808080")
 
+            # Get language information from the segment
+            language_code = segment.get('language', '??').upper()
+            lang_prob = segment.get('language_probability', 0)
+            language_display = f"{language_code} ({lang_prob:.0%})" if lang_prob > 0 else language_code
+
             with st.container():
                 st.markdown(f"""
                 <div style="background-color: #ffffff; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 6px solid {color}; box-shadow: 0 2px 6px rgba(0,0,0,0.05);">
                     <p class="speaker-name" style="color: {color};">{speaker}</p>
-                    <p class="timestamp">{timestamp_str}</p>
+                    <div class="timestamp">
+                        <span>{timestamp_str}</span>
+                        <span class="language-badge" title="Detected Language (Confidence)">{language_display}</span>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -228,7 +234,7 @@ def main():
         st.divider()
         st.download_button(
             label="Download Edited Transcript (JSON)",
-            data=json.dumps(st.session_state.transcript_data, indent=2),
+            data=json.dumps(st.session_state.transcript_data, indent=2, ensure_ascii=False),
             file_name="edited_transcript.json",
             mime="application/json"
         )
